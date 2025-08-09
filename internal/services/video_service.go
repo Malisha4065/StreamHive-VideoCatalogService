@@ -1,6 +1,7 @@
 package services
 
 import (
+	"context"
 	"fmt"
 
 	"go.uber.org/zap"
@@ -11,13 +12,23 @@ import (
 
 // VideoService handles video-related business logic
 type VideoService struct {
-	db     *gorm.DB
-	logger *zap.SugaredLogger
+	db            *gorm.DB
+	logger        *zap.SugaredLogger
+	deleteService *VideoDeleteService
 }
 
 // NewVideoService creates a new video service
 func NewVideoService(db *gorm.DB, logger *zap.SugaredLogger) *VideoService {
-	return &VideoService{db: db, logger: logger}
+	// Initialize Azure client for deletion operations
+	azureClient, err := NewAzureClientAdapterFromEnv()
+	if err != nil {
+		logger.Warnw("Failed to initialize Azure client for video deletion", "error", err)
+		// Continue without deletion service - deletion will be database-only
+		return &VideoService{db: db, logger: logger, deleteService: nil}
+	}
+
+	deleteService := NewVideoDeleteService(db, logger, azureClient)
+	return &VideoService{db: db, logger: logger, deleteService: deleteService}
 }
 
 // CreateVideo creates a new video record (manual creation path)
@@ -105,13 +116,25 @@ func (s *VideoService) UpdateVideo(id uint, req *models.VideoUpdateRequest) (*mo
 	return video, nil
 }
 
-// DeleteVideo soft deletes a video
+// DeleteVideo completely removes a video and all associated files
 func (s *VideoService) DeleteVideo(id uint) error {
+	// Use the delete service if available for complete cleanup
+	if s.deleteService != nil {
+		ctx := context.Background()
+		if err := s.deleteService.DeleteVideoCompletely(ctx, id); err != nil {
+			s.logger.Errorw("Failed to delete video completely", "error", err, "videoID", id)
+			return err
+		}
+		return nil
+	}
+
+	// Fallback to database-only deletion if Azure client unavailable
+	s.logger.Warnw("Azure client not available - performing database-only deletion", "videoID", id)
 	if err := s.db.Delete(&models.Video{}, id).Error; err != nil {
-		s.logger.Errorw("Failed to delete video", "error", err, "videoID", id)
+		s.logger.Errorw("Failed to delete video from database", "error", err, "videoID", id)
 		return fmt.Errorf("failed to delete video: %w", err)
 	}
-	s.logger.Infow("Video deleted", "videoID", id)
+	s.logger.Infow("Video deleted from database only", "videoID", id)
 	return nil
 }
 

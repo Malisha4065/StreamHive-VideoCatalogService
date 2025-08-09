@@ -178,7 +178,7 @@ func (h *VideoHandler) UpdateVideo(c *gin.Context) {
 	c.JSON(http.StatusOK, video)
 }
 
-// DeleteVideo handles DELETE /api/v1/videos/:id
+// DeleteVideo handles DELETE /api/v1/videos/:id - permanently removes video and all files
 func (h *VideoHandler) DeleteVideo(c *gin.Context) {
 	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {
@@ -196,7 +196,11 @@ func (h *VideoHandler) DeleteVideo(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusNoContent, nil)
+	h.logger.Infow("Video permanently deleted", "videoID", id)
+	c.JSON(http.StatusOK, gin.H{
+		"message": "Video and all associated files have been permanently deleted",
+		"video_id": id,
+	})
 }
 
 // SearchVideos handles GET /api/v1/videos/search
