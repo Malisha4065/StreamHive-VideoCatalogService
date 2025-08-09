@@ -1,0 +1,103 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: video-catalog-api
+  labels:
+    app: video-catalog-api
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: video-catalog-api
+  template:
+    metadata:
+      labels:
+        app: video-catalog-api
+    spec:
+      containers:
+      - name: video-catalog-api
+        image: streamhive/video-catalog-api:latest
+        ports:
+        - containerPort: 8080
+        env:
+        - name: DB_HOST
+          valueFrom:
+            configMapKeyRef:
+              name: video-catalog-config
+              key: DB_HOST
+        - name: DB_PORT
+          valueFrom:
+            configMapKeyRef:
+              name: video-catalog-config
+              key: DB_PORT
+        - name: DB_USER
+          valueFrom:
+            secretKeyRef:
+              name: video-catalog-secrets
+              key: DB_USER
+        - name: DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: video-catalog-secrets
+              key: DB_PASSWORD
+        - name: DB_NAME
+          valueFrom:
+            configMapKeyRef:
+              name: video-catalog-config
+              key: DB_NAME
+        - name: DB_SSLMODE
+          valueFrom:
+            configMapKeyRef:
+              name: video-catalog-config
+              key: DB_SSLMODE
+        - name: AMQP_URL
+          valueFrom:
+            secretKeyRef:
+              name: video-catalog-secrets
+              key: AMQP_URL
+        - name: AMQP_EXCHANGE
+          valueFrom:
+            configMapKeyRef:
+              name: video-catalog-config
+              key: AMQP_EXCHANGE
+        - name: AMQP_QUEUE
+          valueFrom:
+            configMapKeyRef:
+              name: video-catalog-config
+              key: AMQP_QUEUE
+        - name: AMQP_ROUTING_KEY
+          valueFrom:
+            configMapKeyRef:
+              name: video-catalog-config
+              key: AMQP_ROUTING_KEY
+        - name: AMQP_UPLOAD_QUEUE
+          valueFrom:
+            configMapKeyRef:
+              name: video-catalog-config
+              key: AMQP_UPLOAD_QUEUE
+        - name: AMQP_UPLOAD_ROUTING_KEY
+          valueFrom:
+            configMapKeyRef:
+              name: video-catalog-config
+              key: AMQP_UPLOAD_ROUTING_KEY
+        - name: PORT
+          value: "8080"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 5
+          periodSeconds: 5
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"

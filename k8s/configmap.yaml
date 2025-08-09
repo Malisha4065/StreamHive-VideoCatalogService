@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: video-catalog-config
+data:
+  DB_HOST: "postgres-service"
+  DB_PORT: "5432"
+  DB_NAME: "video_catalog"
+  DB_SSLMODE: "disable"
+  AMQP_EXCHANGE: "streamhive"
+  AMQP_QUEUE: "video-catalog.video.transcoded"
+  AMQP_ROUTING_KEY: "video.transcoded"
+  AMQP_UPLOAD_QUEUE: "video-catalog.video.uploaded"
+  AMQP_UPLOAD_ROUTING_KEY: "video.uploaded"

@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: video-catalog-service
+  labels:
+    app: video-catalog-api
+spec:
+  selector:
+    app: video-catalog-api
+  ports:
+  - name: http
+    port: 80
+    targetPort: 8080
+    protocol: TCP
+  type: ClusterIP

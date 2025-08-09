@@ -1,0 +1,66 @@
+version: "3.9"
+
+services:
+  video-catalog-api:
+    build: .
+    ports:
+      - "8080:8080"
+    environment:
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_USER=postgres
+      - DB_PASSWORD=postgres
+      - DB_NAME=video_catalog
+      - DB_SSLMODE=disable
+      - AMQP_URL=amqp://guest:guest@rabbitmq:5672/
+      - AMQP_EXCHANGE=streamhive
+      - AMQP_QUEUE=video-catalog.video.transcoded
+      - AMQP_ROUTING_KEY=video.transcoded
+      - AMQP_UPLOAD_QUEUE=video-catalog.video.uploaded
+      - AMQP_UPLOAD_ROUTING_KEY=video.uploaded
+      - PORT=8080
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    restart: on-failure
+    networks:
+      - catalog-network
+
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      - POSTGRES_DB=video_catalog
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - catalog-network
+
+  rabbitmq:
+    image: rabbitmq:3-management
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    networks:
+      - catalog-network
+
+volumes:
+  postgres_data:
+
+networks:
+  catalog-network:
