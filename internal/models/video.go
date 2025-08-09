@@ -83,12 +83,20 @@ type VideoListResponse struct {
 }
 
 // TranscodedEvent represents the event received when a video is transcoded
+// Now optionally carries original metadata so catalog can backfill if upload event missed.
 type TranscodedEvent struct {
-	UploadID string         `json:"uploadId"`
-	UserID   string         `json:"userId"`
-	HLS      HLSInfo        `json:"hls"`
-	Ready    bool           `json:"ready"`
-	Metadata *VideoMetadata `json:"metadata,omitempty"`
+	UploadID         string         `json:"uploadId"`
+	UserID           string         `json:"userId"`
+	Title            string         `json:"title,omitempty"`
+	Description      string         `json:"description,omitempty"`
+	Tags             []string       `json:"tags,omitempty"`
+	Category         string         `json:"category,omitempty"`
+	IsPrivate        bool           `json:"isPrivate,omitempty"`
+	OriginalFilename string         `json:"originalFilename,omitempty"`
+	RawVideoPath     string         `json:"rawVideoPath,omitempty"`
+	HLS              HLSInfo        `json:"hls"`
+	Ready            bool           `json:"ready"`
+	Metadata         *VideoMetadata `json:"metadata,omitempty"`
 }
 
 // UploadedEvent represents the initial upload event published by UploadService

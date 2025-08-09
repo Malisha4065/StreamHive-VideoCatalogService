@@ -170,6 +170,48 @@ func (s *VideoService) HandleUploadedEvent(event *models.UploadedEvent) error {
 	var existing models.Video
 	err := s.db.Where("upload_id = ?", event.UploadID).First(&existing).Error
 	if err == nil {
+		// Row already exists – possibly created from a prior transcoded event placeholder.
+		updated := false
+		// Only patch empty / default fields so we don't overwrite user edits.
+		if existing.Username == "" && event.Username != "" {
+			existing.Username = event.Username
+			updated = true
+		}
+		if existing.Title == "Untitled Video" && event.Title != "" {
+			existing.Title = event.Title
+			updated = true
+		}
+		if existing.Description == "" && event.Description != "" {
+			existing.Description = event.Description
+			updated = true
+		}
+		if len(existing.Tags) == 0 && len(event.Tags) > 0 {
+			existing.Tags = event.Tags
+			updated = true
+		}
+		if existing.Category == "" && event.Category != "" {
+			existing.Category = event.Category
+			updated = true
+		}
+		if existing.OriginalFilename == "" && event.OriginalName != "" {
+			existing.OriginalFilename = event.OriginalName
+			updated = true
+		}
+		if existing.RawVideoPath == "" && event.RawVideoPath != "" {
+			existing.RawVideoPath = event.RawVideoPath
+			updated = true
+		}
+		// Always trust privacy flag if row had default false and upload says true.
+		if !existing.IsPrivate && event.IsPrivate {
+			existing.IsPrivate = true
+			updated = true
+		}
+		if updated {
+			if err := s.db.Save(&existing).Error; err != nil {
+				return fmt.Errorf("patch existing video from upload event: %w", err)
+			}
+			s.logger.Infow("Patched existing video with upload metadata", "uploadID", event.UploadID, "videoID", existing.ID)
+		}
 		return nil
 	}
 	if err != nil && err != gorm.ErrRecordNotFound {
@@ -206,13 +248,44 @@ func (s *VideoService) HandleTranscodedEvent(event *models.TranscodedEvent) erro
 		video = &models.Video{
 			UploadID: event.UploadID,
 			UserID:   event.UserID,
-			Title:    "Untitled Video",
+			Title:    nonEmpty(event.Title, "Untitled Video"),
 			Status:   models.StatusProcessing,
 		}
 		if err := s.db.Create(video).Error; err != nil {
 			s.logger.Errorw("Failed to create video from transcoded event", "error", err, "uploadID", event.UploadID)
 			return fmt.Errorf("failed to create video: %w", err)
 		}
+	}
+
+	// Backfill metadata if still empty / default
+	updated := false
+	if video.Title == "Untitled Video" && event.Title != "" {
+		video.Title = event.Title
+		updated = true
+	}
+	if video.Description == "" && event.Description != "" {
+		video.Description = event.Description
+		updated = true
+	}
+	if len(video.Tags) == 0 && len(event.Tags) > 0 {
+		video.Tags = event.Tags
+		updated = true
+	}
+	if video.Category == "" && event.Category != "" {
+		video.Category = event.Category
+		updated = true
+	}
+	if video.OriginalFilename == "" && event.OriginalFilename != "" {
+		video.OriginalFilename = event.OriginalFilename
+		updated = true
+	}
+	if video.RawVideoPath == "" && event.RawVideoPath != "" {
+		video.RawVideoPath = event.RawVideoPath
+		updated = true
+	}
+	if !video.IsPrivate && event.IsPrivate { // escalate privacy if needed
+		video.IsPrivate = true
+		updated = true
 	}
 
 	video.HLSMasterURL = event.HLS.MasterURL
@@ -228,6 +301,7 @@ func (s *VideoService) HandleTranscodedEvent(event *models.TranscodedEvent) erro
 		video.AudioCodec = event.Metadata.AudioCodec
 		video.AudioBitrate = event.Metadata.AudioBitrate
 		video.FrameRate = event.Metadata.FrameRate
+		updated = true
 	}
 
 	if err := s.db.Save(video).Error; err != nil {
@@ -235,7 +309,11 @@ func (s *VideoService) HandleTranscodedEvent(event *models.TranscodedEvent) erro
 		return fmt.Errorf("failed to update video: %w", err)
 	}
 
-	s.logger.Infow("Video updated from transcoded event", "uploadID", event.UploadID, "videoID", video.ID)
+	if updated {
+		s.logger.Infow("Video updated from transcoded event (metadata backfilled)", "uploadID", event.UploadID, "videoID", video.ID)
+	} else {
+		s.logger.Infow("Video status updated from transcoded event", "uploadID", event.UploadID, "videoID", video.ID)
+	}
 	return nil
 }
 
