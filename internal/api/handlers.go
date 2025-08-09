@@ -39,6 +39,7 @@ func SetupRoutes(router *gin.Engine, videoService *services.VideoService, logger
 			videos.PUT("/:id", handler.UpdateVideo)
 			videos.DELETE("/:id", handler.DeleteVideo)
 			videos.GET("/search", handler.SearchVideos)
+			videos.GET("/upload/:uploadId", handler.GetVideoByUploadID)
 		}
 
 		// User-specific routes
@@ -219,4 +220,24 @@ func (h *VideoHandler) SearchVideos(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, response)
+}
+
+// GetVideoByUploadID handles GET /api/v1/videos/upload/:uploadId
+func (h *VideoHandler) GetVideoByUploadID(c *gin.Context) {
+	uploadID := c.Param("uploadId")
+	if uploadID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "uploadId required"})
+		return
+	}
+	video, err := h.videoService.GetVideoByUploadID(uploadID)
+	if err != nil {
+		if err.Error() == "video not found" {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Video not found"})
+			return
+		}
+		h.logger.Errorw("Failed to get video by uploadId", "error", err, "uploadId", uploadID)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get video"})
+		return
+	}
+	c.JSON(http.StatusOK, video)
 }
