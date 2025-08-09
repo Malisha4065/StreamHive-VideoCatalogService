@@ -31,7 +31,7 @@ func (s *VideoService) CreateVideo(userID string, req *models.VideoCreateRequest
 		UserID:      userID,
 		Title:       req.Title,
 		Description: req.Description,
-		Tags:        req.Tags,
+		TagsList:    req.Tags,
 		IsPrivate:   req.IsPrivate,
 		Category:    req.Category,
 		Status:      models.StatusUploaded,
@@ -87,7 +87,7 @@ func (s *VideoService) UpdateVideo(id uint, req *models.VideoUpdateRequest) (*mo
 		video.Description = *req.Description
 	}
 	if req.Tags != nil {
-		video.Tags = req.Tags
+		video.TagsList = req.Tags
 	}
 	if req.IsPrivate != nil {
 		video.IsPrivate = *req.IsPrivate
@@ -185,8 +185,8 @@ func (s *VideoService) HandleUploadedEvent(event *models.UploadedEvent) error {
 			existing.Description = event.Description
 			updated = true
 		}
-		if len(existing.Tags) == 0 && len(event.Tags) > 0 {
-			existing.Tags = event.Tags
+		if len(existing.TagsList) == 0 && len(event.Tags) > 0 {
+			existing.TagsList = event.Tags
 			updated = true
 		}
 		if existing.Category == "" && event.Category != "" {
@@ -224,7 +224,7 @@ func (s *VideoService) HandleUploadedEvent(event *models.UploadedEvent) error {
 		Username:         event.Username,
 		Title:            nonEmpty(event.Title, "Untitled Video"),
 		Description:      event.Description,
-		Tags:             event.Tags,
+		TagsList:         event.Tags,
 		IsPrivate:        event.IsPrivate,
 		Category:         event.Category,
 		OriginalFilename: event.OriginalName,
@@ -267,8 +267,8 @@ func (s *VideoService) HandleTranscodedEvent(event *models.TranscodedEvent) erro
 		video.Description = event.Description
 		updated = true
 	}
-	if len(video.Tags) == 0 && len(event.Tags) > 0 {
-		video.Tags = event.Tags
+	if len(video.TagsList) == 0 && len(event.Tags) > 0 {
+		video.TagsList = event.Tags
 		updated = true
 	}
 	if video.Category == "" && event.Category != "" {

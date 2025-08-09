@@ -1,6 +1,8 @@
 package models
 
 import (
+	"encoding/json"
+	"strings"
 	"time"
 
 	"gorm.io/gorm"
@@ -14,7 +16,8 @@ type Video struct {
 	Username    string      `json:"username"`
 	Title       string      `json:"title" gorm:"not null"`
 	Description string      `json:"description"`
-	Tags        []string    `json:"tags" gorm:"type:text[]"`
+	Tags        string      `json:"-" gorm:"type:text[]"`
+	TagsList    []string    `json:"tags" gorm:"-"`
 	IsPrivate   bool        `json:"is_private" gorm:"default:false"`
 	Category    string      `json:"category"`
 	Status      VideoStatus `json:"status" gorm:"default:'uploaded'"`
@@ -131,4 +134,196 @@ type VideoMetadata struct {
 	AudioCodec   string  `json:"audioCodec"`
 	AudioBitrate int     `json:"audioBitrate"`
 	FrameRate    float64 `json:"frameRate"`
+}
+
+// UnmarshalJSON implements custom unmarshaling for UploadedEvent to handle tags
+func (e *UploadedEvent) UnmarshalJSON(data []byte) error {
+	type Alias UploadedEvent
+	aux := &struct {
+		Tags interface{} `json:"tags"`
+		*Alias
+	}{
+		Alias: (*Alias)(e),
+	}
+
+	if err := json.Unmarshal(data, &aux); err != nil {
+		return err
+	}
+
+	// Handle tags field - it could be a string or array
+	switch v := aux.Tags.(type) {
+	case string:
+		if v == "" {
+			e.Tags = []string{}
+		} else {
+			e.Tags = strings.Split(v, ",")
+			for i, tag := range e.Tags {
+				e.Tags[i] = strings.TrimSpace(tag)
+			}
+		}
+	case []interface{}:
+		e.Tags = make([]string, len(v))
+		for i, tag := range v {
+			if str, ok := tag.(string); ok {
+				e.Tags[i] = strings.TrimSpace(str)
+			}
+		}
+	case []string:
+		e.Tags = v
+	case nil:
+		e.Tags = []string{}
+	default:
+		e.Tags = []string{}
+	}
+
+	return nil
+}
+
+// UnmarshalJSON implements custom unmarshaling for TranscodedEvent to handle tags
+func (e *TranscodedEvent) UnmarshalJSON(data []byte) error {
+	type Alias TranscodedEvent
+	aux := &struct {
+		Tags interface{} `json:"tags"`
+		*Alias
+	}{
+		Alias: (*Alias)(e),
+	}
+
+	if err := json.Unmarshal(data, &aux); err != nil {
+		return err
+	}
+
+	// Handle tags field - it could be a string or array
+	switch v := aux.Tags.(type) {
+	case string:
+		if v == "" {
+			e.Tags = []string{}
+		} else {
+			e.Tags = strings.Split(v, ",")
+			for i, tag := range e.Tags {
+				e.Tags[i] = strings.TrimSpace(tag)
+			}
+		}
+	case []interface{}:
+		e.Tags = make([]string, len(v))
+		for i, tag := range v {
+			if str, ok := tag.(string); ok {
+				e.Tags[i] = strings.TrimSpace(str)
+			}
+		}
+	case []string:
+		e.Tags = v
+	case nil:
+		e.Tags = []string{}
+	default:
+		e.Tags = []string{}
+	}
+
+	return nil
+}
+
+// MarshalJSON custom marshals the UploadedEvent to handle tags properly
+func (e *UploadedEvent) MarshalJSON() ([]byte, error) {
+	type Alias UploadedEvent
+	aux := &struct {
+		Tags json.RawMessage `json:"tags"`
+		*Alias
+	}{
+		Alias: (*Alias)(e),
+	}
+
+	// Marshal the tags field as a JSON array
+	tagsData, err := json.Marshal(e.Tags)
+	if err != nil {
+		return nil, err
+	}
+	aux.Tags = tagsData
+
+	return json.Marshal(aux)
+}
+
+// SanitizeTags sanitizes the tags by trimming spaces and removing empty values
+func (e *UploadedEvent) SanitizeTags() {
+	var sanitizedTags []string
+	for _, tag := range e.Tags {
+		tag = strings.TrimSpace(tag)
+		if tag != "" {
+			sanitizedTags = append(sanitizedTags, tag)
+		}
+	}
+	e.Tags = sanitizedTags
+}
+
+// BeforeCreate hook to convert TagsList to Tags before database insert
+func (v *Video) BeforeCreate(tx *gorm.DB) error {
+	v.Tags = convertSliceToPostgresArray(v.TagsList)
+	return nil
+}
+
+// BeforeUpdate hook to convert TagsList to Tags before database update
+func (v *Video) BeforeUpdate(tx *gorm.DB) error {
+	v.Tags = convertSliceToPostgresArray(v.TagsList)
+	return nil
+}
+
+// AfterFind hook to convert Tags to TagsList after database query
+func (v *Video) AfterFind(tx *gorm.DB) error {
+	v.TagsList = convertPostgresArrayToSlice(v.Tags)
+	return nil
+}
+
+// MarshalJSON implements custom JSON marshaling for Video
+func (v Video) MarshalJSON() ([]byte, error) {
+	type Alias Video
+	aux := &struct {
+		Tags []string `json:"tags"`
+		*Alias
+	}{
+		Tags:  v.TagsList,
+		Alias: (*Alias)(&v),
+	}
+	// Remove the TagsList field from JSON output by setting it to nil in the alias
+	aux.Alias.TagsList = nil
+	return json.Marshal(aux)
+}
+
+// Helper function to convert Go slice to PostgreSQL array string
+func convertSliceToPostgresArray(slice []string) string {
+	if len(slice) == 0 {
+		return "{}"
+	}
+
+	// Escape quotes and build array string
+	var escaped []string
+	for _, item := range slice {
+		// Escape quotes by doubling them
+		escaped = append(escaped, `"`+strings.ReplaceAll(item, `"`, `""`)+`"`)
+	}
+
+	return "{" + strings.Join(escaped, ",") + "}"
+}
+
+// Helper function to convert PostgreSQL array string to Go slice
+func convertPostgresArrayToSlice(pgArray string) []string {
+	if pgArray == "" || pgArray == "{}" {
+		return []string{}
+	}
+
+	// Remove braces and split by comma
+	trimmed := strings.Trim(pgArray, "{}")
+	if trimmed == "" {
+		return []string{}
+	}
+
+	parts := strings.Split(trimmed, ",")
+	var result []string
+
+	for _, part := range parts {
+		// Remove quotes and unescape
+		cleaned := strings.Trim(part, `"`)
+		cleaned = strings.ReplaceAll(cleaned, `""`, `"`)
+		result = append(result, cleaned)
+	}
+
+	return result
 }
