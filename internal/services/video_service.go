@@ -314,6 +314,12 @@ func (s *VideoService) HandleTranscodedEvent(event *models.TranscodedEvent) erro
 	video.HLSMasterURL = event.HLS.MasterURL
 	video.Status = models.StatusReady
 
+	// Set thumbnail URL if provided
+	if event.ThumbnailURL != "" {
+		video.ThumbnailURL = event.ThumbnailURL
+		updated = true
+	}
+
 	if event.Metadata != nil {
 		video.Duration = event.Metadata.Duration
 		video.FileSize = event.Metadata.FileSize

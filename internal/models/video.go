@@ -98,6 +98,7 @@ type TranscodedEvent struct {
 	OriginalFilename string         `json:"originalFilename,omitempty"`
 	RawVideoPath     string         `json:"rawVideoPath,omitempty"`
 	HLS              HLSInfo        `json:"hls"`
+	ThumbnailURL     string         `json:"thumbnailUrl,omitempty"`
 	Ready            bool           `json:"ready"`
 	Metadata         *VideoMetadata `json:"metadata,omitempty"`
 }
