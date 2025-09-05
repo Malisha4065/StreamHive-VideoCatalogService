@@ -18,7 +18,7 @@ func NewCommentService(db *gorm.DB, logger *zap.SugaredLogger) *CommentService {
     return &CommentService{db: db, logger: logger}
 }
 
-func (s *CommentService) AddComment(videoID uint, userID, content string) (*models.Comment, error) {
+func (s *CommentService) AddComment(videoID uint, userID, username, content string) (*models.Comment, error) {
     // Ensure video exists and visibility allows commenting (basic existence check here)
     var v models.Video
     if err := s.db.First(&v, videoID).Error; err != nil {
@@ -27,7 +27,7 @@ func (s *CommentService) AddComment(videoID uint, userID, content string) (*mode
         }
         return nil, fmt.Errorf("lookup video: %w", err)
     }
-    c := &models.Comment{VideoID: videoID, UserID: userID, Content: content}
+    c := &models.Comment{VideoID: videoID, UserID: userID, Username: username, Content: content}
     if err := s.db.Create(c).Error; err != nil {
         s.logger.Errorw("create comment", "err", err)
         return nil, fmt.Errorf("failed to create comment: %w", err)
@@ -35,13 +35,25 @@ func (s *CommentService) AddComment(videoID uint, userID, content string) (*mode
     return c, nil
 }
 
-func (s *CommentService) ListComments(videoID uint, includePrivate bool, requesterID string) ([]models.Comment, error) {
-    // Visibility policy enforced by caller (handler) before calling this
-    var out []models.Comment
-    if err := s.db.Where("video_id = ?", videoID).Order("created_at ASC").Find(&out).Error; err != nil {
-        return nil, fmt.Errorf("list comments: %w", err)
+func (s *CommentService) ListComments(videoID uint, page, perPage int) ([]models.Comment, int64, error) {
+    // Pagination with newest first
+    if page < 1 { page = 1 }
+    if perPage < 1 || perPage > 100 { perPage = 20 }
+
+    var total int64
+    if err := s.db.Model(&models.Comment{}).Where("video_id = ?", videoID).Count(&total).Error; err != nil {
+        return nil, 0, fmt.Errorf("count comments: %w", err)
     }
-    return out, nil
+
+    var out []models.Comment
+    if err := s.db.Where("video_id = ?", videoID).
+        Order("created_at DESC").
+        Limit(perPage).
+        Offset((page-1)*perPage).
+        Find(&out).Error; err != nil {
+        return nil, 0, fmt.Errorf("list comments: %w", err)
+    }
+    return out, total, nil
 }
 
 func (s *CommentService) DeleteComment(commentID uint, requesterID string, isOwnerOrAuthor bool) error {

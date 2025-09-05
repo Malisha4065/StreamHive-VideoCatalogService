@@ -170,9 +170,20 @@ func (h *VideoHandler) ListComments(c *gin.Context) {
 	if video.IsPrivate && video.UserID != requester {
 		c.JSON(http.StatusForbidden, gin.H{"error": "Forbidden"}); return
 	}
-	comments, err := h.commentSvc.ListComments(uint(id), !video.IsPrivate, requester)
+	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	perPage, _ := strconv.Atoi(c.DefaultQuery("per_page", "20"))
+	if page < 1 { page = 1 }
+	if perPage < 1 || perPage > 100 { perPage = 20 }
+	comments, total, err := h.commentSvc.ListComments(uint(id), page, perPage)
 	if err != nil { c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to list comments"}); return }
-	c.JSON(http.StatusOK, gin.H{"comments": comments})
+	totalPages := (int(total) + perPage - 1) / perPage
+	c.JSON(http.StatusOK, gin.H{
+		"comments": comments,
+		"total": total,
+		"page": page,
+		"per_page": perPage,
+		"total_pages": totalPages,
+	})
 }
 
 // AddComment handles POST /api/v1/videos/:id/comments
@@ -189,7 +200,7 @@ func (h *VideoHandler) AddComment(c *gin.Context) {
 	}
 	var req models.CommentCreateRequest
 	if err := c.ShouldBindJSON(&req); err != nil { c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()}); return }
-	cmt, err := h.commentSvc.AddComment(uint(id), requester, req.Content)
+	cmt, err := h.commentSvc.AddComment(uint(id), requester, req.AuthorName, req.Content)
 	if err != nil { c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to add comment"}); return }
 	c.JSON(http.StatusCreated, cmt)
 }

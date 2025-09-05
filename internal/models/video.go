@@ -50,6 +50,7 @@ type Comment struct {
 	ID        uint           `json:"id" gorm:"primarykey"`
 	VideoID   uint           `json:"video_id" gorm:"index;not null"`
 	UserID    string         `json:"user_id" gorm:"index;not null"`
+	Username  string         `json:"author_name" gorm:"size:120"`
 	Content   string         `json:"content" gorm:"type:text;not null"`
 	CreatedAt time.Time      `json:"created_at"`
 	UpdatedAt time.Time      `json:"updated_at"`
@@ -57,7 +58,8 @@ type Comment struct {
 }
 
 type CommentCreateRequest struct {
-	Content string `json:"content" binding:"required,min=1,max=2000"`
+	Content    string `json:"content" binding:"required,min=1,max=2000"`
+	AuthorName string `json:"author_name" binding:"omitempty,max=120"`
 }
 
 // VideoStatus represents the processing status of a video
