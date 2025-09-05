@@ -45,6 +45,21 @@ type Video struct {
 	DeletedAt gorm.DeletedAt `json:"deleted_at,omitempty" gorm:"index"`
 }
 
+// Comment represents a comment on a video
+type Comment struct {
+	ID        uint           `json:"id" gorm:"primarykey"`
+	VideoID   uint           `json:"video_id" gorm:"index;not null"`
+	UserID    string         `json:"user_id" gorm:"index;not null"`
+	Content   string         `json:"content" gorm:"type:text;not null"`
+	CreatedAt time.Time      `json:"created_at"`
+	UpdatedAt time.Time      `json:"updated_at"`
+	DeletedAt gorm.DeletedAt `json:"deleted_at,omitempty" gorm:"index"`
+}
+
+type CommentCreateRequest struct {
+	Content string `json:"content" binding:"required,min=1,max=2000"`
+}
+
 // VideoStatus represents the processing status of a video
 type VideoStatus string
 

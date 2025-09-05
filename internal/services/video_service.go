@@ -31,6 +31,9 @@ func NewVideoService(db *gorm.DB, logger *zap.SugaredLogger) *VideoService {
 	return &VideoService{db: db, logger: logger, deleteService: deleteService}
 }
 
+// DB exposes the underlying gorm.DB for internal read-only operations in handlers
+func (s *VideoService) DB() *gorm.DB { return s.db }
+
 // CreateVideo creates a new video record (manual creation path)
 func (s *VideoService) CreateVideo(userID string, req *models.VideoCreateRequest) (*models.Video, error) {
 	if req.UploadID == "" {

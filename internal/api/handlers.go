@@ -14,20 +14,23 @@ import (
 // VideoHandler handles video-related HTTP requests
 type VideoHandler struct {
 	videoService *services.VideoService
+	commentSvc   *services.CommentService
 	logger       *zap.SugaredLogger
 }
 
 // NewVideoHandler creates a new video handler
-func NewVideoHandler(videoService *services.VideoService, logger *zap.SugaredLogger) *VideoHandler {
+func NewVideoHandler(videoService *services.VideoService, commentSvc *services.CommentService, logger *zap.SugaredLogger) *VideoHandler {
 	return &VideoHandler{
 		videoService: videoService,
+	commentSvc:   commentSvc,
 		logger:       logger,
 	}
 }
 
 // SetupRoutes sets up all API routes
 func SetupRoutes(router *gin.Engine, videoService *services.VideoService, logger *zap.SugaredLogger) {
-	handler := NewVideoHandler(videoService, logger)
+	commentSvc := services.NewCommentService(videoService.DB(), logger)
+	handler := NewVideoHandler(videoService, commentSvc, logger)
 
 	api := router.Group("/api/v1")
 	{
@@ -40,6 +43,9 @@ func SetupRoutes(router *gin.Engine, videoService *services.VideoService, logger
 			videos.DELETE("/:id", handler.DeleteVideo)
 			videos.GET("/search", handler.SearchVideos)
 			videos.GET("/upload/:uploadId", handler.GetVideoByUploadID)
+			// Comments on a video
+			videos.GET("/:id/comments", handler.ListComments)
+			videos.POST("/:id/comments", handler.AddComment)
 		}
 
 		// User-specific routes
@@ -47,6 +53,9 @@ func SetupRoutes(router *gin.Engine, videoService *services.VideoService, logger
 		{
 			users.GET("", handler.ListUserVideos)
 		}
+
+	// Comment management
+	api.DELETE("/comments/:commentID", handler.DeleteComment)
 	}
 }
 
@@ -148,6 +157,62 @@ func (h *VideoHandler) GetVideo(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, video)
+}
+
+// ListComments handles GET /api/v1/videos/:id/comments
+func (h *VideoHandler) ListComments(c *gin.Context) {
+	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
+	if err != nil { c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid video ID"}); return }
+	video, err := h.videoService.GetVideo(uint(id))
+	if err != nil { c.JSON(http.StatusNotFound, gin.H{"error": "Video not found"}); return }
+	requester := c.GetHeader("X-User-ID")
+	// Enforce privacy: if private, only owner sees comments
+	if video.IsPrivate && video.UserID != requester {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Forbidden"}); return
+	}
+	comments, err := h.commentSvc.ListComments(uint(id), !video.IsPrivate, requester)
+	if err != nil { c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to list comments"}); return }
+	c.JSON(http.StatusOK, gin.H{"comments": comments})
+}
+
+// AddComment handles POST /api/v1/videos/:id/comments
+func (h *VideoHandler) AddComment(c *gin.Context) {
+	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
+	if err != nil { c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid video ID"}); return }
+	requester := c.GetHeader("X-User-ID")
+	if requester == "" { c.JSON(http.StatusUnauthorized, gin.H{"error": "User ID required"}); return }
+	video, err := h.videoService.GetVideo(uint(id))
+	if err != nil { c.JSON(http.StatusNotFound, gin.H{"error": "Video not found"}); return }
+	// If private, only owner can comment (policy; adjust as needed)
+	if video.IsPrivate && video.UserID != requester {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Forbidden"}); return
+	}
+	var req models.CommentCreateRequest
+	if err := c.ShouldBindJSON(&req); err != nil { c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()}); return }
+	cmt, err := h.commentSvc.AddComment(uint(id), requester, req.Content)
+	if err != nil { c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to add comment"}); return }
+	c.JSON(http.StatusCreated, cmt)
+}
+
+// DeleteComment handles DELETE /api/v1/comments/:commentID
+func (h *VideoHandler) DeleteComment(c *gin.Context) {
+	cid, err := strconv.ParseUint(c.Param("commentID"), 10, 32)
+	if err != nil { c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid comment ID"}); return }
+	requester := c.GetHeader("X-User-ID")
+	if requester == "" { c.JSON(http.StatusUnauthorized, gin.H{"error": "User ID required"}); return }
+	// Load comment and video to determine permission: author or video owner can delete
+	var comment models.Comment
+	if err := h.videoService.DB().First(&comment, uint(cid)).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Comment not found"}); return
+	}
+	video, err := h.videoService.GetVideo(comment.VideoID)
+	if err != nil { c.JSON(http.StatusNotFound, gin.H{"error": "Video not found"}); return }
+	isOwnerOrAuthor := (comment.UserID == requester) || (video.UserID == requester)
+	if err := h.commentSvc.DeleteComment(uint(cid), requester, isOwnerOrAuthor); err != nil {
+		if err.Error() == "forbidden" { c.JSON(http.StatusForbidden, gin.H{"error": "Forbidden"}); return }
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete comment"}); return
+	}
+	c.JSON(http.StatusOK, gin.H{"deleted": true})
 }
 
 // UpdateVideo handles PUT /api/v1/videos/:id
