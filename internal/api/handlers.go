@@ -75,6 +75,7 @@ func (h *VideoHandler) ListVideos(c *gin.Context) {
 // ListUserVideos handles GET /api/v1/users/:userID/videos
 func (h *VideoHandler) ListUserVideos(c *gin.Context) {
 	userID := c.Param("userID")
+	requesterID := c.GetHeader("X-User-ID")
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	perPage, _ := strconv.Atoi(c.DefaultQuery("per_page", "20"))
 
@@ -85,9 +86,8 @@ func (h *VideoHandler) ListUserVideos(c *gin.Context) {
 		perPage = 20
 	}
 
-	// For now, include private videos if requesting own videos
-	// In a real implementation, you'd check authentication
-	includePrivate := true
+	// Include private only if caller is the owner
+	includePrivate := requesterID != "" && requesterID == userID
 
 	response, err := h.videoService.ListVideos(userID, page, perPage, includePrivate)
 	if err != nil {
